@@ -11,6 +11,7 @@ import (
 	_ "github.com/lib/pq"
 
 	"github.com/unkabogaton/github-users/internal/cache"
+	"github.com/unkabogaton/github-users/internal/clients"
 	"github.com/unkabogaton/github-users/internal/repositories"
 	"github.com/unkabogaton/github-users/internal/rest"
 	"github.com/unkabogaton/github-users/internal/service"
@@ -33,7 +34,11 @@ func main() {
 	defer database.Close()
 	userRepository := repositories.NewSQLXUserRepo(database)
 
+	// Prefer REDIS_ADDRESS, fallback to REDIS_ADDR
 	redisAddress := os.Getenv("REDIS_ADDRESS")
+	if redisAddress == "" {
+		redisAddress = os.Getenv("REDIS_ADDR")
+	}
 	redisPassword := os.Getenv("REDIS_PASSWORD")
 	redisTTLString := os.Getenv("REDIS_TTL_SEC")
 	if redisTTLString == "" {
@@ -42,7 +47,9 @@ func main() {
 	redisTTLSeconds, _ := strconv.Atoi(redisTTLString)
 	redisCache := cache.NewRedisCache(redisAddress, redisPassword, redisTTLSeconds)
 
-	userService := service.NewUserService(userRepository, redisCache)
+	gitHubToken := os.Getenv("GITHUB_TOKEN")
+	gitHubClient := clients.NewGitHubClient(gitHubToken, userRepository, redisCache)
+	userService := service.NewUserService(userRepository, redisCache, gitHubClient)
 
 	router := gin.Default()
 	userHandler := rest.NewHandler(userService)

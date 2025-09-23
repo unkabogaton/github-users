@@ -86,3 +86,47 @@ func (client *GitHubClient) FetchUsersSince(
 
 	return fetchedUsers, nil
 }
+
+func (client *GitHubClient) FetchOne(
+	ctx context.Context,
+	username string,
+) (*models.GitHubUser, error) {
+	if err := client.rateLimiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+
+	userRequestURL := fmt.Sprintf("%s/users/%s", client.apiBaseURL, username)
+
+	httpRequest, _ := http.NewRequestWithContext(ctx, http.MethodGet, userRequestURL, nil)
+	if client.accessToken != "" {
+		httpRequest.Header.Set("Authorization", "token "+client.accessToken)
+	}
+	httpRequest.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	httpResponse, err := client.httpClient.Do(httpRequest)
+	if err != nil {
+		return nil, err
+	}
+	defer httpResponse.Body.Close()
+
+	if httpResponse.StatusCode == http.StatusTooManyRequests || httpResponse.StatusCode >= http.StatusInternalServerError {
+		responseBody, _ := io.ReadAll(httpResponse.Body)
+		return nil, fmt.Errorf("GitHub API rate/server error: %d body: %s", httpResponse.StatusCode, string(responseBody))
+	}
+
+	if httpResponse.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("user %s not found", username)
+	}
+
+	if httpResponse.StatusCode != http.StatusOK {
+		responseBody, _ := io.ReadAll(httpResponse.Body)
+		return nil, fmt.Errorf("unexpected GitHub status %d: %s", httpResponse.StatusCode, string(responseBody))
+	}
+
+	var fetchedUser models.GitHubUser
+	if err := json.NewDecoder(httpResponse.Body).Decode(&fetchedUser); err != nil {
+		return nil, err
+	}
+
+	return &fetchedUser, nil
+}

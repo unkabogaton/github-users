@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/unkabogaton/github-users/internal/cache"
+	"github.com/unkabogaton/github-users/internal/clients"
 	"github.com/unkabogaton/github-users/internal/models"
 	"github.com/unkabogaton/github-users/internal/repositories"
 )
@@ -11,10 +12,11 @@ import (
 type UserService struct {
 	repository repositories.UserRepo
 	cache      *cache.RedisCache
+	client     *clients.GitHubClient
 }
 
-func NewUserService(repository repositories.UserRepo, cache *cache.RedisCache) *UserService {
-	return &UserService{repository, cache}
+func NewUserService(repository repositories.UserRepo, cache *cache.RedisCache, client *clients.GitHubClient) *UserService {
+	return &UserService{repository: repository, cache: cache, client: client}
 }
 
 func (service *UserService) List(ctx context.Context) ([]models.User, error) {
@@ -93,11 +95,22 @@ func (service *UserService) Get(
 		}
 	}
 
-	databaseUser, databaseError := service.repository.GetByLogin(requestContext, username)
-	if databaseError != nil {
-		return nil, databaseError
+	ghUser, err := service.client.FetchOne(requestContext, username)
+	if err != nil {
+		return nil, err
 	}
 
-	_ = service.cache.SetUser(requestContext, databaseUser)
-	return databaseUser, nil
+	user := &models.User{
+		ID:        ghUser.ID,
+		Login:     ghUser.Login,
+		AvatarURL: ghUser.AvatarURL,
+		HTMLURL:   ghUser.HTMLURL,
+		URL:       ghUser.URL,
+		Type:      ghUser.Type,
+		SiteAdmin: ghUser.SiteAdmin,
+	}
+	if service.cache != nil {
+		_ = service.cache.SetUser(requestContext, user)
+	}
+	return user, nil
 }
