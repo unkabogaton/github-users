@@ -48,6 +48,9 @@ func main() {
 	userHandler := rest.NewHandler(userService)
 
 	router.GET("/users", userHandler.ListUsers)
+	router.PUT("/users/:username", userHandler.UpdateUser)
+	router.GET("/users/:username", userHandler.GetUser)
+	router.DELETE("/users/:username", userHandler.DeleteUser)
 
 	log.Printf("Starting REST server on %s", restServerAddress)
 	if runError := router.Run(restServerAddress); runError != nil {
