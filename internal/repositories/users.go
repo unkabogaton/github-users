@@ -26,10 +26,10 @@ func (r *sqlxUserRepo) Upsert(ctx context.Context, u *models.User) error {
 	query := `
         INSERT INTO github_users (
             id, login, node_id, avatar_url, url, html_url,
-            type, user_view_type, site_admin, created_at, updated_at
+            type, user_view_type, site_admin
         ) VALUES (
             :id, :login, :node_id, :avatar_url, :url, :html_url,
-            :type, :user_view_type, :site_admin, COALESCE(:created_at, NOW()), NOW()
+            :type, :user_view_type, :site_admin
         )
         ON CONFLICT (id) DO UPDATE SET
             login          = EXCLUDED.login,
@@ -40,6 +40,7 @@ func (r *sqlxUserRepo) Upsert(ctx context.Context, u *models.User) error {
             type           = EXCLUDED.type,
             user_view_type = EXCLUDED.user_view_type,
             site_admin     = EXCLUDED.site_admin,
+            updated_at     = NOW()
     `
 	_, err := r.db.NamedExecContext(ctx, query, u)
 	return err
