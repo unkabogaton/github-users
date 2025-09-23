@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE IF NOT EXISTS github_users (
     id             INTEGER PRIMARY KEY,
     login          TEXT    NOT NULL,
@@ -13,3 +14,7 @@ CREATE TABLE IF NOT EXISTS github_users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_github_users_login ON github_users (login);
+
+-- +goose Down
+DROP INDEX IF EXISTS idx_github_users_login;
+DROP TABLE IF EXISTS github_users;
