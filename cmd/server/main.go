@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+    "github.com/joho/godotenv"
 
 	"github.com/unkabogaton/github-users/internal/application/cache"
 	"github.com/unkabogaton/github-users/internal/application/services"
@@ -19,6 +20,7 @@ import (
 )
 
 func main() {
+    _ = godotenv.Load()
 	restServerAddress := os.Getenv("REST_ADDRESS")
 	if restServerAddress == "" {
 		restServerAddress = ":8080"
