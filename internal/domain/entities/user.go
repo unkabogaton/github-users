@@ -1,13 +1,26 @@
-package models
+package entities
 
 import "time"
 
+type User struct {
+	ID           int       `db:"id"`
+	Login        string    `db:"login"`
+	NodeID       string    `db:"node_id"`
+	AvatarURL    string    `db:"avatar_url"`
+	URL          string    `db:"url"`
+	HTMLURL      string    `db:"html_url"`
+	Type         string    `db:"type"`
+	UserViewType string    `db:"user_view_type"`
+	SiteAdmin    bool      `db:"site_admin"`
+	UpdatedAt    time.Time `db:"updated_at"`
+	CreatedAt    time.Time `db:"created_at"`
+}
+
 type GitHubUser struct {
-	Login             string `json:"login"`
 	ID                int    `json:"id"`
+	Login             string `json:"login"`
 	NodeID            string `json:"node_id"`
 	AvatarURL         string `json:"avatar_url"`
-	GravatarID        string `json:"gravatar_id"`
 	URL               string `json:"url"`
 	HTMLURL           string `json:"html_url"`
 	FollowersURL      string `json:"followers_url"`
@@ -22,18 +35,4 @@ type GitHubUser struct {
 	Type              string `json:"type"`
 	UserViewType      string `json:"user_view_type"`
 	SiteAdmin         bool   `json:"site_admin"`
-}
-
-type User struct {
-	Login        string    `db:"login"`
-	ID           int       `db:"id"`
-	NodeID       string    `db:"node_id"`
-	AvatarURL    string    `db:"avatar_url"`
-	URL          string    `db:"url"`
-	HTMLURL      string    `db:"html_url"`
-	Type         string    `db:"type"`
-	UserViewType string    `db:"user_view_type"`
-	SiteAdmin    bool      `db:"site_admin"`
-	UpdatedAt    time.Time `db:"updated_at"`
-	CreatedAt    time.Time `db:"created_at"`
 }

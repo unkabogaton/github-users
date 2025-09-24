@@ -10,11 +10,11 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 
-	"github.com/unkabogaton/github-users/internal/cache"
-	"github.com/unkabogaton/github-users/internal/clients"
-	"github.com/unkabogaton/github-users/internal/repositories"
-	"github.com/unkabogaton/github-users/internal/rest"
-	"github.com/unkabogaton/github-users/internal/service"
+	"github.com/unkabogaton/github-users/internal/application/cache"
+	"github.com/unkabogaton/github-users/internal/application/services"
+	"github.com/unkabogaton/github-users/internal/infrastructure/database/repositories"
+	"github.com/unkabogaton/github-users/internal/infrastructure/http"
+	"github.com/unkabogaton/github-users/internal/infrastructure/http/controllers"
 )
 
 func main() {
@@ -32,7 +32,7 @@ func main() {
 		panic(fmt.Errorf("failed to open database: %w", databaseErr))
 	}
 	defer database.Close()
-	userRepository := repositories.NewSQLXUserRepo(database)
+	userRepository := repositories.NewUserRepository(database)
 
 	// Prefer REDIS_ADDRESS, fallback to REDIS_ADDR
 	redisAddress := os.Getenv("REDIS_ADDRESS")
@@ -48,16 +48,16 @@ func main() {
 	redisCache := cache.NewRedisCache(redisAddress, redisPassword, redisTTLSeconds)
 
 	gitHubToken := os.Getenv("GITHUB_TOKEN")
-	gitHubClient := clients.NewGitHubClient(gitHubToken, userRepository, redisCache)
-	userService := service.NewUserService(userRepository, redisCache, gitHubClient)
+	gitHubClient := http.NewGitHubClient(gitHubToken)
+	userService := services.NewUserService(userRepository, redisCache, gitHubClient)
 
 	router := gin.Default()
-	userHandler := rest.NewHandler(userService)
+	userController := controllers.NewUserController(userService)
 
-	router.GET("/users", userHandler.ListUsers)
-	router.PUT("/users/:username", userHandler.UpdateUser)
-	router.GET("/users/:username", userHandler.GetUser)
-	router.DELETE("/users/:username", userHandler.DeleteUser)
+	router.GET("/users", userController.ListUsers)
+	router.PUT("/users/:username", userController.UpdateUser)
+	router.GET("/users/:username", userController.GetUser)
+	router.DELETE("/users/:username", userController.DeleteUser)
 
 	log.Printf("Starting REST server on %s", restServerAddress)
 	if runError := router.Run(restServerAddress); runError != nil {

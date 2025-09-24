@@ -11,10 +11,10 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 
-	"github.com/unkabogaton/github-users/internal/cache"
-	"github.com/unkabogaton/github-users/internal/clients"
-	"github.com/unkabogaton/github-users/internal/models"
-	"github.com/unkabogaton/github-users/internal/repositories"
+	"github.com/unkabogaton/github-users/internal/application/cache"
+	"github.com/unkabogaton/github-users/internal/domain/entities"
+	"github.com/unkabogaton/github-users/internal/infrastructure/database/repositories"
+	"github.com/unkabogaton/github-users/internal/infrastructure/http"
 )
 
 func main() {
@@ -35,7 +35,7 @@ func main() {
 	}
 	defer database.Close()
 
-	userRepository := repositories.NewSQLXUserRepo(database)
+	userRepository := repositories.NewUserRepository(database)
 
 	redisAddress := os.Getenv("REDIS_ADDR")
 	redisPassword := os.Getenv("REDIS_PASSWORD")
@@ -44,16 +44,12 @@ func main() {
 		redisTTLString = "300"
 	}
 	redisTTLSeconds, _ := strconv.Atoi(redisTTLString)
-	redisCache := cache.NewRedisCache(redisAddress, redisPassword, redisTTLSeconds)
+	_ = cache.NewRedisCache(redisAddress, redisPassword, redisTTLSeconds)
 
 	gitHubAccessToken := os.Getenv("GITHUB_TOKEN")
-	gitHubClient := clients.NewGitHubClient(
-		gitHubAccessToken,
-		userRepository,
-		redisCache,
-	)
+	gitHubClient := http.NewGitHubClient(gitHubAccessToken)
 
-	userChannel := make(chan models.User, usersPerPage*workerPoolSize)
+	userChannel := make(chan entities.User, usersPerPage*workerPoolSize)
 	var workerWaitGroup sync.WaitGroup
 
 	for workerIndex := 0; workerIndex < workerPoolSize; workerIndex++ {
@@ -84,7 +80,7 @@ func main() {
 
 		for {
 			var lastFetchError error
-			var fetchedUsers []models.GitHubUser
+			var fetchedUsers []entities.GitHubUser
 
 			for attempt := 1; attempt <= maximumFetchRetries; attempt++ {
 				usersBatch, fetchErr := gitHubClient.FetchUsersSince(
@@ -127,7 +123,7 @@ func main() {
 				if fetchedUser.ID > nextSinceID {
 					nextSinceID = fetchedUser.ID
 				}
-				userChannel <- models.User{
+				userChannel <- entities.User{
 					ID:           fetchedUser.ID,
 					Login:        fetchedUser.Login,
 					AvatarURL:    fetchedUser.AvatarURL,
