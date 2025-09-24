@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/unkabogaton/github-users/internal/domain/entities"
+	derr "github.com/unkabogaton/github-users/internal/domain/errors"
 	"github.com/unkabogaton/github-users/internal/domain/interfaces"
 
 	"golang.org/x/time/rate"
@@ -38,9 +39,9 @@ func (c *GitHubClient) FetchUsersSince(
 	resultsPerPage int,
 ) ([]entities.GitHubUser, error) {
 
-	if err := c.rateLimiter.Wait(ctx); err != nil {
-		return nil, err
-	}
+    if err := c.rateLimiter.Wait(ctx); err != nil {
+        return nil, derr.Wrap(derr.ErrorCodeInternal, "rate limiter wait failed", err)
+    }
 
 	requestURL := fmt.Sprintf(
 		"%s/users?per_page=%d&since=%d",
@@ -55,25 +56,25 @@ func (c *GitHubClient) FetchUsersSince(
 	}
 	httpRequest.Header.Set("Accept", "application/vnd.github.v3+json")
 
-	httpResponse, err := c.httpClient.Do(httpRequest)
-	if err != nil {
-		return nil, err
-	}
+    httpResponse, err := c.httpClient.Do(httpRequest)
+    if err != nil {
+        return nil, derr.Wrap(derr.ErrorCodeUpstream, "GitHub request failed", err)
+    }
 	defer httpResponse.Body.Close()
 
-	if httpResponse.StatusCode == http.StatusTooManyRequests || httpResponse.StatusCode >= http.StatusInternalServerError {
-		responseBody, _ := io.ReadAll(httpResponse.Body)
-		return nil, fmt.Errorf("GitHub API rate/server error: %d body: %s", httpResponse.StatusCode, string(responseBody))
-	}
-	if httpResponse.StatusCode != http.StatusOK {
-		responseBody, _ := io.ReadAll(httpResponse.Body)
-		return nil, fmt.Errorf("unexpected GitHub status %d: %s", httpResponse.StatusCode, string(responseBody))
-	}
+    if httpResponse.StatusCode == http.StatusTooManyRequests || httpResponse.StatusCode >= http.StatusInternalServerError {
+        responseBody, _ := io.ReadAll(httpResponse.Body)
+        return nil, derr.Wrap(derr.ErrorCodeRateLimited, "Upstream GitHub rate/server error", fmt.Errorf("status %d body %s", httpResponse.StatusCode, string(responseBody)))
+    }
+    if httpResponse.StatusCode != http.StatusOK {
+        responseBody, _ := io.ReadAll(httpResponse.Body)
+        return nil, derr.Wrap(derr.ErrorCodeUpstream, "Unexpected GitHub status", fmt.Errorf("status %d body %s", httpResponse.StatusCode, string(responseBody)))
+    }
 
 	var fetchedUsers []entities.GitHubUser
-	if err := json.NewDecoder(httpResponse.Body).Decode(&fetchedUsers); err != nil {
-		return nil, err
-	}
+    if err := json.NewDecoder(httpResponse.Body).Decode(&fetchedUsers); err != nil {
+        return nil, derr.Wrap(derr.ErrorCodeUpstream, "Failed to decode GitHub users response", err)
+    }
 
 	return fetchedUsers, nil
 }
@@ -82,9 +83,9 @@ func (c *GitHubClient) FetchOne(
 	ctx context.Context,
 	username string,
 ) (*entities.GitHubUser, error) {
-	if err := c.rateLimiter.Wait(ctx); err != nil {
-		return nil, err
-	}
+    if err := c.rateLimiter.Wait(ctx); err != nil {
+        return nil, derr.Wrap(derr.ErrorCodeInternal, "rate limiter wait failed", err)
+    }
 
 	userRequestURL := fmt.Sprintf("%s/users/%s", c.apiBaseURL, username)
 
@@ -94,30 +95,30 @@ func (c *GitHubClient) FetchOne(
 	}
 	httpRequest.Header.Set("Accept", "application/vnd.github.v3+json")
 
-	httpResponse, err := c.httpClient.Do(httpRequest)
-	if err != nil {
-		return nil, err
-	}
+    httpResponse, err := c.httpClient.Do(httpRequest)
+    if err != nil {
+        return nil, derr.Wrap(derr.ErrorCodeUpstream, "GitHub request failed", err)
+    }
 	defer httpResponse.Body.Close()
 
-	if httpResponse.StatusCode == http.StatusTooManyRequests || httpResponse.StatusCode >= http.StatusInternalServerError {
-		responseBody, _ := io.ReadAll(httpResponse.Body)
-		return nil, fmt.Errorf("GitHub API rate/server error: %d body: %s", httpResponse.StatusCode, string(responseBody))
-	}
+    if httpResponse.StatusCode == http.StatusTooManyRequests || httpResponse.StatusCode >= http.StatusInternalServerError {
+        responseBody, _ := io.ReadAll(httpResponse.Body)
+        return nil, derr.Wrap(derr.ErrorCodeRateLimited, "Upstream GitHub rate/server error", fmt.Errorf("status %d body %s", httpResponse.StatusCode, string(responseBody)))
+    }
 
-	if httpResponse.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("user %s not found", username)
-	}
+    if httpResponse.StatusCode == http.StatusNotFound {
+        return nil, derr.New(derr.ErrorCodeNotFound, fmt.Sprintf("user %s not found", username))
+    }
 
-	if httpResponse.StatusCode != http.StatusOK {
-		responseBody, _ := io.ReadAll(httpResponse.Body)
-		return nil, fmt.Errorf("unexpected GitHub status %d: %s", httpResponse.StatusCode, string(responseBody))
-	}
+    if httpResponse.StatusCode != http.StatusOK {
+        responseBody, _ := io.ReadAll(httpResponse.Body)
+        return nil, derr.Wrap(derr.ErrorCodeUpstream, "Unexpected GitHub status", fmt.Errorf("status %d body %s", httpResponse.StatusCode, string(responseBody)))
+    }
 
 	var fetchedUser entities.GitHubUser
-	if err := json.NewDecoder(httpResponse.Body).Decode(&fetchedUser); err != nil {
-		return nil, err
-	}
+    if err := json.NewDecoder(httpResponse.Body).Decode(&fetchedUser); err != nil {
+        return nil, derr.Wrap(derr.ErrorCodeUpstream, "Failed to decode GitHub user response", err)
+    }
 
 	return &fetchedUser, nil
 }

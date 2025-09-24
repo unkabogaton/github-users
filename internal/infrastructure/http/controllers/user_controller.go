@@ -1,10 +1,11 @@
 package controllers
 
 import (
-	"net/http"
+    "net/http"
 
-	"github.com/gin-gonic/gin"
-	"github.com/unkabogaton/github-users/internal/domain/interfaces"
+    "github.com/gin-gonic/gin"
+    derr "github.com/unkabogaton/github-users/internal/domain/errors"
+    "github.com/unkabogaton/github-users/internal/domain/interfaces"
 )
 
 type UserController struct {
@@ -20,9 +21,7 @@ func (c *UserController) ListUsers(ctx *gin.Context) {
 
 	users, listErr := c.userService.List(requestContext)
 	if listErr != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"error": listErr.Error(),
-		})
+        _ = ctx.Error(listErr)
 		return
 	}
 
@@ -35,7 +34,12 @@ func (c *UserController) GetUser(ctx *gin.Context) {
 
 	user, err := c.userService.Get(requestContext, username)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+        // If service did not categorize, treat not found sensibly at controller level
+        if derr.IsCode(err, derr.ErrorCodeNotFound) {
+            _ = ctx.Error(err)
+        } else {
+            _ = ctx.Error(derr.Wrap(derr.ErrorCodeInternal, "failed to get user", err))
+        }
 		return
 	}
 
@@ -47,7 +51,7 @@ func (c *UserController) UpdateUser(ctx *gin.Context) {
 
 	var updateRequest interfaces.UpdateUserRequest
 	if err := ctx.ShouldBindJSON(&updateRequest); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        _ = ctx.Error(derr.Wrap(derr.ErrorCodeValidation, "invalid request payload", err))
 		return
 	}
 
@@ -57,7 +61,7 @@ func (c *UserController) UpdateUser(ctx *gin.Context) {
 		updateRequest,
 	)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        _ = ctx.Error(derr.Wrap(derr.ErrorCodeInternal, "failed to update user", err))
 		return
 	}
 
@@ -69,7 +73,7 @@ func (c *UserController) DeleteUser(ctx *gin.Context) {
 	requestContext := ctx.Request.Context()
 
 	if deleteError := c.userService.Delete(requestContext, username); deleteError != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": deleteError.Error()})
+        _ = ctx.Error(derr.Wrap(derr.ErrorCodeInternal, "failed to delete user", deleteError))
 		return
 	}
 

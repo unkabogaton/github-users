@@ -15,6 +15,7 @@ import (
 	"github.com/unkabogaton/github-users/internal/infrastructure/database/repositories"
 	"github.com/unkabogaton/github-users/internal/infrastructure/http"
 	"github.com/unkabogaton/github-users/internal/infrastructure/http/controllers"
+    "github.com/unkabogaton/github-users/internal/infrastructure/http/middleware"
 )
 
 func main() {
@@ -47,7 +48,8 @@ func main() {
 	gitHubClient := http.NewGitHubClient(gitHubToken)
 	userService := services.NewUserService(userRepository, redisCache, gitHubClient)
 
-	router := gin.Default()
+    router := gin.Default()
+    router.Use(middleware.ErrorHandlingMiddleware())
 	userController := controllers.NewUserController(userService)
 
 	router.GET("/users", userController.ListUsers)
