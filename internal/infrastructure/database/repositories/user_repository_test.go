@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"testing"
 	"time"
@@ -126,4 +127,30 @@ func TestUserRepository_DeleteByLogin(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUserRepository_GetByLogin_NotFound(t *testing.T) {
+	t.Parallel()
+
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	sqlxDB := sqlx.NewDb(db, "postgres")
+	repository := NewUserRepository(sqlxDB)
+
+	mock.ExpectQuery(regexp.QuoteMeta(
+		`SELECT id, login, node_id, avatar_url, url, html_url,
+		        type, user_view_type, site_admin, updated_at, created_at
+		   FROM github_users
+		   WHERE login = $1
+		   LIMIT 1`,
+	)).
+		WithArgs("nonexistent_user").
+		WillReturnError(fmt.Errorf("no row found"))
+
+	user, err := repository.GetByLogin(context.Background(), "nonexistent_user")
+
+	require.Error(t, err)
+	require.Nil(t, user)
 }
