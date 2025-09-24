@@ -1,6 +1,5 @@
 package models
 
-// Request models for HTTP layer
 type UpdateUserRequest struct {
 	Login        string `json:"Login"`
 	NodeID       string `json:"NodeID"`

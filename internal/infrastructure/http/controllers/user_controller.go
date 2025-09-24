@@ -1,12 +1,13 @@
 package controllers
 
 import (
-    "net/http"
+	"net/http"
+	"strconv"
 
-    "github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin"
 
-    derr "github.com/unkabogaton/github-users/internal/domain/errors"
-    "github.com/unkabogaton/github-users/internal/domain/interfaces"
+	domainErrors "github.com/unkabogaton/github-users/internal/domain/errors"
+	"github.com/unkabogaton/github-users/internal/domain/interfaces"
 )
 
 type UserController struct {
@@ -17,66 +18,92 @@ func NewUserController(userService interfaces.UserService) *UserController {
 	return &UserController{userService: userService}
 }
 
-func (c *UserController) ListUsers(ctx *gin.Context) {
-	requestContext := ctx.Request.Context()
+func (controller *UserController) ListUsers(ginContext *gin.Context) {
+	httpRequestContext := ginContext.Request.Context()
 
-	users, listErr := c.userService.List(requestContext)
-	if listErr != nil {
-        _ = ctx.Error(listErr)
+	defaultLimit := 10
+	defaultPage := 1
+	sortColumn := ginContext.DefaultQuery("orderby", "id")
+	sortDirection := ginContext.DefaultQuery("order", "asc")
+
+	limitQueryValue := ginContext.DefaultQuery("limit", "")
+	if limitQueryValue != "" {
+		if parsedLimit, parseError := strconv.Atoi(limitQueryValue); parseError == nil {
+			defaultLimit = parsedLimit
+		}
+	}
+
+	pageQueryValue := ginContext.DefaultQuery("page", "")
+	if pageQueryValue != "" {
+		if parsedPage, parseError := strconv.Atoi(pageQueryValue); parseError == nil {
+			defaultPage = parsedPage
+		}
+	}
+
+	listOptions := interfaces.ListOptions{
+		Limit:          defaultLimit,
+		Page:           defaultPage,
+		OrderBy:        sortColumn,
+		OrderDirection: sortDirection,
+	}
+
+	userList, userListError := controller.userService.List(httpRequestContext, listOptions)
+	if userListError != nil {
+		_ = ginContext.Error(userListError)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, users)
+	ginContext.JSON(http.StatusOK, userList)
 }
 
-func (c *UserController) GetUser(ctx *gin.Context) {
-	requestContext := ctx.Request.Context()
-	username := ctx.Param("username")
+func (controller *UserController) GetUser(ginContext *gin.Context) {
+	httpRequestContext := ginContext.Request.Context()
+	usernameParameter := ginContext.Param("username")
 
-	user, err := c.userService.Get(requestContext, username)
-	if err != nil {
-        // If service did not categorize, treat not found sensibly at controller level
-        if derr.IsCode(err, derr.ErrorCodeNotFound) {
-            _ = ctx.Error(err)
-        } else {
-            _ = ctx.Error(derr.Wrap(derr.ErrorCodeInternal, "failed to get user", err))
-        }
+	userEntity, getUserError := controller.userService.Get(httpRequestContext, usernameParameter)
+	if getUserError != nil {
+		if domainErrors.IsCode(getUserError, domainErrors.ErrorCodeNotFound) {
+			_ = ginContext.Error(getUserError)
+		} else {
+			_ = ginContext.Error(domainErrors.Wrap(domainErrors.ErrorCodeInternal, "failed to get user", getUserError))
+		}
 		return
 	}
 
-	ctx.JSON(http.StatusOK, user)
+	ginContext.JSON(http.StatusOK, userEntity)
 }
 
-func (c *UserController) UpdateUser(ctx *gin.Context) {
-	username := ctx.Param("username")
+func (controller *UserController) UpdateUser(ginContext *gin.Context) {
+	usernameParameter := ginContext.Param("username")
 
-	var updateRequest interfaces.UpdateUserRequest
-	if err := ctx.ShouldBindJSON(&updateRequest); err != nil {
-        _ = ctx.Error(derr.Wrap(derr.ErrorCodeValidation, "invalid request payload", err))
+	var updateUserRequest interfaces.UpdateUserRequest
+	if bindError := ginContext.ShouldBindJSON(&updateUserRequest); bindError != nil {
+		_ = ginContext.Error(domainErrors.Wrap(domainErrors.ErrorCodeValidation, "invalid request payload", bindError))
 		return
 	}
 
-	updatedUser, err := c.userService.Update(
-		ctx.Request.Context(),
-		username,
-		updateRequest,
+	updatedUserEntity, updateError := controller.userService.Update(
+		ginContext.Request.Context(),
+		usernameParameter,
+		updateUserRequest,
 	)
-	if err != nil {
-        _ = ctx.Error(derr.Wrap(derr.ErrorCodeInternal, "failed to update user", err))
+	if updateError != nil {
+		_ = ginContext.Error(domainErrors.Wrap(domainErrors.ErrorCodeInternal, "failed to update user", updateError))
 		return
 	}
 
-	ctx.JSON(http.StatusOK, updatedUser)
+	ginContext.JSON(http.StatusOK, updatedUserEntity)
 }
 
-func (c *UserController) DeleteUser(ctx *gin.Context) {
-	username := ctx.Param("username")
-	requestContext := ctx.Request.Context()
+func (controller *UserController) DeleteUser(ginContext *gin.Context) {
+	usernameParameter := ginContext.Param("username")
+	httpRequestContext := ginContext.Request.Context()
 
-	if deleteError := c.userService.Delete(requestContext, username); deleteError != nil {
-        _ = ctx.Error(derr.Wrap(derr.ErrorCodeInternal, "failed to delete user", deleteError))
+	deleteError := controller.userService.Delete(httpRequestContext, usernameParameter)
+	if deleteError != nil {
+		_ = ginContext.Error(domainErrors.Wrap(domainErrors.ErrorCodeInternal, "failed to delete user", deleteError))
 		return
 	}
 
-    ctx.JSON(http.StatusOK, gin.H{"username": username})
+	ginContext.JSON(http.StatusOK, gin.H{"username": usernameParameter})
 }
