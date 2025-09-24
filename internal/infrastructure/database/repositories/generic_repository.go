@@ -1,136 +1,146 @@
 package repositories
 
 import (
-    "context"
-    "fmt"
-    "reflect"
-    "strings"
+	"context"
+	"fmt"
+	"reflect"
+	"strings"
 
-    "github.com/jmoiron/sqlx"
+	"github.com/jmoiron/sqlx"
 )
 
 type GenericRepository[T any] struct {
-	db        *sqlx.DB
-	tableName string
-	columns   []string
-	keyColumn string
+	database   *sqlx.DB
+	tableName  string
+	columnList []string
+	keyColumn  string
 }
 
-func NewGenericRepository[T any](db *sqlx.DB, tableName, keyColumn string) *GenericRepository[T] {
-	var zero T
-	columns := extractColumns(zero)
+func NewGenericRepository[T any](database *sqlx.DB, tableName, keyColumn string) *GenericRepository[T] {
+	var zeroValue T
+	columnList := extractColumnNames(zeroValue)
 
 	return &GenericRepository[T]{
-		db:        db,
-		tableName: tableName,
-		columns:   columns,
-		keyColumn: keyColumn,
+		database:   database,
+		tableName:  tableName,
+		columnList: columnList,
+		keyColumn:  keyColumn,
 	}
 }
 
-func extractColumns[T any](zero T) []string {
-	t := reflect.TypeOf(zero)
-	var columns []string
+func extractColumnNames[T any](zeroValue T) []string {
+	entityType := reflect.TypeOf(zeroValue)
+	var columnNames []string
 
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
+	for index := 0; index < entityType.NumField(); index++ {
+		field := entityType.Field(index)
 		if dbTag := field.Tag.Get("db"); dbTag != "" && dbTag != "-" {
-			columns = append(columns, dbTag)
+			columnNames = append(columnNames, dbTag)
 		}
 	}
-	return columns
+	return columnNames
 }
 
-func (r *GenericRepository[T]) Upsert(ctx context.Context, entity T) error {
-	columnsStr := strings.Join(r.columns, ", ")
-	placeholders := make([]string, len(r.columns))
-	for i, col := range r.columns {
-		placeholders[i] = ":" + col
+func (repository *GenericRepository[T]) Upsert(ctx context.Context, entity T) error {
+	columns := strings.Join(repository.columnList, ", ")
+	placeholders := make([]string, len(repository.columnList))
+	for index, column := range repository.columnList {
+		placeholders[index] = ":" + column
 	}
-	valuesStr := strings.Join(placeholders, ", ")
+	values := strings.Join(placeholders, ", ")
 
-	setClause := make([]string, 0, len(r.columns))
-	for _, col := range r.columns {
-		if col != r.keyColumn {
-			setClause = append(setClause, fmt.Sprintf("%s = EXCLUDED.%s", col, col))
+	updateAssignments := make([]string, 0, len(repository.columnList))
+	for _, column := range repository.columnList {
+		if column != repository.keyColumn {
+			updateAssignments = append(updateAssignments, fmt.Sprintf("%s = EXCLUDED.%s", column, column))
 		}
 	}
-	setStr := strings.Join(setClause, ", ")
+	updateClause := strings.Join(updateAssignments, ", ")
 
 	query := fmt.Sprintf(`
 		INSERT INTO %s (%s) VALUES (%s)
 		ON CONFLICT (%s) DO UPDATE SET %s, updated_at = NOW()`,
-		r.tableName, columnsStr, valuesStr, r.keyColumn, setStr)
+		repository.tableName, columns, values, repository.keyColumn, updateClause)
 
-	_, err := r.db.NamedExecContext(ctx, query, entity)
+	_, err := repository.database.NamedExecContext(ctx, query, entity)
 	return err
 }
 
-func (r *GenericRepository[T]) GetByField(ctx context.Context, field, value string) (*T, error) {
+func (repository *GenericRepository[T]) GetByField(ctx context.Context, fieldName, fieldValue string) (*T, error) {
 	var entity T
-	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1 LIMIT 1",
-		strings.Join(r.columns, ", "), r.tableName, field)
+	query := fmt.Sprintf(
+		"SELECT %s FROM %s WHERE %s = $1 LIMIT 1",
+		strings.Join(repository.columnList, ", "),
+		repository.tableName,
+		fieldName,
+	)
 
-	if err := r.db.GetContext(ctx, &entity, query, value); err != nil {
+	if err := repository.database.GetContext(ctx, &entity, query, fieldValue); err != nil {
 		return nil, err
 	}
 	return &entity, nil
 }
 
-func (r *GenericRepository[T]) List(ctx context.Context, limit, page int, orderBy, orderDirection string) ([]T, error) {
-    var results []T
+func (repository *GenericRepository[T]) List(
+	ctx context.Context,
+	limit int,
+	page int,
+	orderBy string,
+	orderDirection string,
+) ([]T, error) {
+	var results []T
 
-    resolvedOrderBy := orderBy
-    if resolvedOrderBy == "" || !r.isValidColumn(orderBy) {
-        resolvedOrderBy = r.keyColumn
-    }
+	sortColumn := orderBy
+	if sortColumn == "" || !repository.isValidColumn(orderBy) {
+		sortColumn = repository.keyColumn
+	}
 
-    resolvedDirection := strings.ToUpper(orderDirection)
-    if resolvedDirection != "DESC" {
-        resolvedDirection = "ASC"
-    }
+	sortDirection := strings.ToUpper(orderDirection)
+	if sortDirection != "DESC" {
+		sortDirection = "ASC"
+	}
 
-    if limit <= 0 {
-        limit = 10
-    }
-    if page <= 0 {
-        page = 1
-    }
-    offset := (page - 1) * limit
+	if limit <= 0 {
+		limit = 10
+	}
+	if page <= 0 {
+		page = 1
+	}
+	offset := (page - 1) * limit
 
-    query := fmt.Sprintf(
-        "SELECT %s FROM %s ORDER BY %s %s LIMIT $1 OFFSET $2",
-        strings.Join(r.columns, ", "),
-        r.tableName,
-        resolvedOrderBy,
-        resolvedDirection,
-    )
+	query := fmt.Sprintf(
+		"SELECT %s FROM %s ORDER BY %s %s LIMIT $1 OFFSET $2",
+		strings.Join(repository.columnList, ", "),
+		repository.tableName,
+		sortColumn,
+		sortDirection,
+	)
 
-    if err := r.db.SelectContext(ctx, &results, query, limit, offset); err != nil {
-        return nil, err
-    }
-    return results, nil
+	if err := repository.database.SelectContext(ctx, &results, query, limit, offset); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
-func (r *GenericRepository[T]) DeleteByField(ctx context.Context, field, value string) error {
-	query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", r.tableName, field)
-	_, err := r.db.ExecContext(ctx, query, value)
+func (repository *GenericRepository[T]) DeleteByField(ctx context.Context, fieldName, fieldValue string) error {
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", repository.tableName, fieldName)
+	_, err := repository.database.ExecContext(ctx, query, fieldValue)
 	return err
 }
 
-func (r *GenericRepository[T]) GetByID(ctx context.Context, id interface{}) (*T, error) {
-	return r.GetByField(ctx, r.keyColumn, fmt.Sprintf("%v", id))
+func (repository *GenericRepository[T]) GetByID(ctx context.Context, identifier interface{}) (*T, error) {
+	return repository.GetByField(ctx, repository.keyColumn, fmt.Sprintf("%v", identifier))
 }
 
-func (r *GenericRepository[T]) DeleteByID(ctx context.Context, id interface{}) error {
-	return r.DeleteByField(ctx, r.keyColumn, fmt.Sprintf("%v", id))
+func (repository *GenericRepository[T]) DeleteByID(ctx context.Context, identifier interface{}) error {
+	return repository.DeleteByField(ctx, repository.keyColumn, fmt.Sprintf("%v", identifier))
 }
 
-func (r *GenericRepository[T]) isValidColumn(column string) bool {
-    for _, c := range r.columns {
-        if c == column {
-            return true
-        }
-    }
-    return false
+func (repository *GenericRepository[T]) isValidColumn(columnName string) bool {
+	for _, column := range repository.columnList {
+		if column == columnName {
+			return true
+		}
+	}
+	return false
 }
