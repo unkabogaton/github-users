@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
 	"github.com/joho/godotenv"
 
 	"github.com/unkabogaton/github-users/internal/application/cache"
@@ -18,21 +18,38 @@ import (
 	"github.com/unkabogaton/github-users/internal/infrastructure/http"
 )
 
+func convertEnvConfigToInt(key string, defaultValue int) int {
+	if valueStr := os.Getenv(key); valueStr != "" {
+		if value, err := strconv.Atoi(valueStr); err == nil {
+			return value
+		}
+	}
+	return defaultValue
+}
+
 func main() {
 	_ = godotenv.Load()
-	
+
 	applicationContext := context.Background()
 
-	const (
-		usersPerPage            = 30
-		workerPoolSize          = 5
-		maximumFetchRetries     = 3
-		delayBetweenUpsertsMS   = 200
-		maximumConsecutiveEmpty = 1
+	var (
+		usersPerPage            = convertEnvConfigToInt("USERS_PER_PAGE", 30)
+		workerPoolSize          = convertEnvConfigToInt("WORKER_POOL_SIZE", 5)
+		maximumFetchRetries     = convertEnvConfigToInt("MAXIMUM_FETCH_RETRIES", 3)
+		delayBetweenUpsertsMS   = convertEnvConfigToInt("DELAY_BETWEEN_UPSERTS_MS", 200)
+		maximumConsecutiveEmpty = convertEnvConfigToInt("MAXIMUM_CONSECUTIVE_EMPTY", 1)
 	)
 
-	postgresDSN := os.Getenv("POSTGRES_DSN")
-	database, databaseErr := sqlx.Open("postgres", postgresDSN)
+	dbUser := os.Getenv("DB_USER")
+	dbPassword := os.Getenv("DB_PASSWORD")
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := os.Getenv("DB_PORT")
+	dbName := os.Getenv("DB_NAME")
+
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&multiStatements=true",
+		dbUser, dbPassword, dbHost, dbPort, dbName)
+
+	database, databaseErr := sqlx.Open("mysql", dsn)
 	if databaseErr != nil {
 		panic(fmt.Errorf("failed to open database: %w", databaseErr))
 	}
@@ -129,6 +146,7 @@ func main() {
 				userChannel <- entities.User{
 					ID:           fetchedUser.ID,
 					Login:        fetchedUser.Login,
+					NodeID:       fetchedUser.NodeID,
 					AvatarURL:    fetchedUser.AvatarURL,
 					HTMLURL:      fetchedUser.HTMLURL,
 					URL:          fetchedUser.URL,

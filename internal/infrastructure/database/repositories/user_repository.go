@@ -12,23 +12,41 @@ type UserRepository struct {
 	*GenericRepository[entities.User]
 }
 
-func NewUserRepository(db *sqlx.DB) interfaces.UserRepository {
-	baseRepo := NewGenericRepository[entities.User](db, "github_users", "id")
-	return &UserRepository{GenericRepository: baseRepo}
+func NewUserRepository(database *sqlx.DB) interfaces.UserRepository {
+	genericRepository := NewGenericRepository[entities.User](database, "github_users", "id")
+	return &UserRepository{GenericRepository: genericRepository}
 }
 
-func (r *UserRepository) Upsert(ctx context.Context, u *entities.User) error {
-	return r.GenericRepository.Upsert(ctx, *u)
+func (userRepository *UserRepository) Upsert(
+	ctx context.Context,
+	userEntity *entities.User,
+) error {
+	return userRepository.GenericRepository.Upsert(ctx, *userEntity)
 }
 
-func (r *UserRepository) GetByLogin(ctx context.Context, login string) (*entities.User, error) {
-	return r.GetByField(ctx, "login", login)
+func (userRepository *UserRepository) GetByLogin(
+	ctx context.Context,
+	login string,
+) (*entities.User, error) {
+	return userRepository.GetByField(ctx, "login", login)
 }
 
-func (r *UserRepository) List(ctx context.Context) ([]entities.User, error) {
-	return r.GenericRepository.List(ctx)
+func (userRepository *UserRepository) List(
+	ctx context.Context,
+	listOptions interfaces.ListOptions,
+) ([]entities.User, error) {
+	return userRepository.GenericRepository.List(
+		ctx,
+		listOptions.Limit,
+		listOptions.Page,
+		listOptions.OrderBy,
+		listOptions.OrderDirection,
+	)
 }
 
-func (r *UserRepository) DeleteByLogin(ctx context.Context, login string) error {
-	return r.DeleteByField(ctx, "login", login)
+func (userRepository *UserRepository) DeleteByLogin(
+	ctx context.Context,
+	login string,
+) error {
+	return userRepository.DeleteByField(ctx, "login", login)
 }

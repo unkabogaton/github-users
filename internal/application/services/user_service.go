@@ -25,8 +25,20 @@ func NewUserService(
 	}
 }
 
-func (s *UserService) List(ctx context.Context) ([]entities.User, error) {
-	return s.repository.List(ctx)
+func (s *UserService) List(ctx context.Context, options interfaces.ListOptions) ([]entities.User, error) {
+	if options.Limit <= 0 {
+		options.Limit = 10
+	}
+	if options.Page <= 0 {
+		options.Page = 1
+	}
+	if options.OrderBy == "" {
+		options.OrderBy = "id"
+	}
+	if options.OrderDirection == "" {
+		options.OrderDirection = "ASC"
+	}
+	return s.repository.List(ctx, options)
 }
 
 func (s *UserService) Get(ctx context.Context, username string) (*entities.User, error) {
@@ -45,6 +57,7 @@ func (s *UserService) Get(ctx context.Context, username string) (*entities.User,
 	user := &entities.User{
 		ID:        ghUser.ID,
 		Login:     ghUser.Login,
+		NodeID:    ghUser.NodeID,
 		AvatarURL: ghUser.AvatarURL,
 		HTMLURL:   ghUser.HTMLURL,
 		URL:       ghUser.URL,

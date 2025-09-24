@@ -9,105 +9,162 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// GenericRepository provides generic CRUD operations for any table/struct
 type GenericRepository[T any] struct {
-	db        *sqlx.DB
-	tableName string
-	columns   []string
-	keyColumn string
+	database   *sqlx.DB
+	tableName  string
+	columnList []string
+	keyColumn  string
 }
 
-// NewGenericRepository creates a new generic repository
-func NewGenericRepository[T any](db *sqlx.DB, tableName, keyColumn string) *GenericRepository[T] {
-	// Extract column names from struct tags
-	var zero T
-	columns := extractColumns(zero)
+func NewGenericRepository[T any](database *sqlx.DB, tableName, keyColumn string) *GenericRepository[T] {
+	var zeroValue T
+	columnList := extractColumnNames(zeroValue)
 
 	return &GenericRepository[T]{
-		db:        db,
-		tableName: tableName,
-		columns:   columns,
-		keyColumn: keyColumn,
+		database:   database,
+		tableName:  tableName,
+		columnList: columnList,
+		keyColumn:  keyColumn,
 	}
 }
 
-// extractColumns extracts column names from struct db tags
-func extractColumns[T any](zero T) []string {
-	t := reflect.TypeOf(zero)
-	var columns []string
+func extractColumnNames[T any](zeroValue T) []string {
+	entityType := reflect.TypeOf(zeroValue)
+	var columnNames []string
 
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
+	for index := 0; index < entityType.NumField(); index++ {
+		field := entityType.Field(index)
 		if dbTag := field.Tag.Get("db"); dbTag != "" && dbTag != "-" {
-			columns = append(columns, dbTag)
+			columnNames = append(columnNames, dbTag)
 		}
 	}
-	return columns
+	return columnNames
 }
 
-// Upsert performs INSERT ... ON CONFLICT DO UPDATE
-func (r *GenericRepository[T]) Upsert(ctx context.Context, entity T) error {
-	columnsStr := strings.Join(r.columns, ", ")
-	placeholders := make([]string, len(r.columns))
-	for i, col := range r.columns {
-		placeholders[i] = ":" + col
+func (repository *GenericRepository[T]) Upsert(ctx context.Context, entity T) error {
+	columns := []string{}
+	placeholders := []string{}
+	updateAssignments := []string{}
+
+	entityValue := reflect.ValueOf(entity)
+	entityType := reflect.TypeOf(entity)
+
+	for i := 0; i < entityType.NumField(); i++ {
+		field := entityType.Field(i)
+		dbTag := field.Tag.Get("db")
+		if dbTag == "" || dbTag == "-" {
+			continue
+		}
+
+		valueField := entityValue.Field(i)
+		if (dbTag == "created_at" || dbTag == "updated_at") && valueField.IsZero() {
+			continue
+		}
+
+		columns = append(columns, dbTag)
+		placeholders = append(placeholders, ":"+dbTag)
+
+		if dbTag != repository.keyColumn && dbTag != "updated_at" {
+			updateAssignments = append(updateAssignments, fmt.Sprintf("%s = VALUES(%s)", dbTag, dbTag))
+		}
 	}
+
+	columnsStr := strings.Join(columns, ", ")
 	valuesStr := strings.Join(placeholders, ", ")
 
-	// Build SET clause for ON CONFLICT
-	setClause := make([]string, 0, len(r.columns))
-	for _, col := range r.columns {
-		if col != r.keyColumn {
-			setClause = append(setClause, fmt.Sprintf("%s = EXCLUDED.%s", col, col))
-		}
+	var updateClause string
+	if len(updateAssignments) > 0 {
+		updateClause = strings.Join(updateAssignments, ", ") + ", updated_at = CURRENT_TIMESTAMP"
+	} else {
+		updateClause = "updated_at = CURRENT_TIMESTAMP"
 	}
-	setStr := strings.Join(setClause, ", ")
 
 	query := fmt.Sprintf(`
 		INSERT INTO %s (%s) VALUES (%s)
-		ON CONFLICT (%s) DO UPDATE SET %s, updated_at = NOW()`,
-		r.tableName, columnsStr, valuesStr, r.keyColumn, setStr)
+		ON DUPLICATE KEY UPDATE %s`,
+		repository.tableName, columnsStr, valuesStr, updateClause)
 
-	_, err := r.db.NamedExecContext(ctx, query, entity)
+	fmt.Printf("[DEBUG] Entity Values: %+v\n", entity)
+
+	_, err := repository.database.NamedExecContext(ctx, query, entity)
 	return err
 }
 
-// GetByField retrieves a single record by a specific field
-func (r *GenericRepository[T]) GetByField(ctx context.Context, field, value string) (*T, error) {
+func (repository *GenericRepository[T]) GetByField(ctx context.Context, fieldName, fieldValue string) (*T, error) {
 	var entity T
-	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1 LIMIT 1",
-		strings.Join(r.columns, ", "), r.tableName, field)
+	query := fmt.Sprintf(
+		"SELECT %s FROM %s WHERE %s = ? LIMIT 1",
+		strings.Join(repository.columnList, ", "),
+		repository.tableName,
+		fieldName,
+	)
 
-	if err := r.db.GetContext(ctx, &entity, query, value); err != nil {
+	if err := repository.database.GetContext(ctx, &entity, query, fieldValue); err != nil {
 		return nil, err
 	}
 	return &entity, nil
 }
 
-// List retrieves all records
-func (r *GenericRepository[T]) List(ctx context.Context) ([]T, error) {
-	var entities []T
-	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(r.columns, ", "), r.tableName)
+func (repository *GenericRepository[T]) List(
+	ctx context.Context,
+	limit int,
+	page int,
+	orderBy string,
+	orderDirection string,
+) ([]T, error) {
+	var results []T
 
-	if err := r.db.SelectContext(ctx, &entities, query); err != nil {
+	sortColumn := orderBy
+	if sortColumn == "" || !repository.isValidColumn(orderBy) {
+		sortColumn = repository.keyColumn
+	}
+
+	sortDirection := strings.ToUpper(orderDirection)
+	if sortDirection != "DESC" {
+		sortDirection = "ASC"
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
+	if page <= 0 {
+		page = 1
+	}
+	offset := (page - 1) * limit
+
+	query := fmt.Sprintf(
+		"SELECT %s FROM %s ORDER BY %s %s LIMIT ? OFFSET ?",
+		strings.Join(repository.columnList, ", "),
+		repository.tableName,
+		sortColumn,
+		sortDirection,
+	)
+
+	if err := repository.database.SelectContext(ctx, &results, query, limit, offset); err != nil {
 		return nil, err
 	}
-	return entities, nil
+	return results, nil
 }
 
-// DeleteByField deletes records by a specific field
-func (r *GenericRepository[T]) DeleteByField(ctx context.Context, field, value string) error {
-	query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", r.tableName, field)
-	_, err := r.db.ExecContext(ctx, query, value)
+func (repository *GenericRepository[T]) DeleteByField(ctx context.Context, fieldName, fieldValue string) error {
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s = ?", repository.tableName, fieldName)
+	_, err := repository.database.ExecContext(ctx, query, fieldValue)
 	return err
 }
 
-// GetByID retrieves a record by its primary key
-func (r *GenericRepository[T]) GetByID(ctx context.Context, id interface{}) (*T, error) {
-	return r.GetByField(ctx, r.keyColumn, fmt.Sprintf("%v", id))
+func (repository *GenericRepository[T]) GetByID(ctx context.Context, identifier interface{}) (*T, error) {
+	return repository.GetByField(ctx, repository.keyColumn, fmt.Sprintf("%v", identifier))
 }
 
-// DeleteByID deletes a record by its primary key
-func (r *GenericRepository[T]) DeleteByID(ctx context.Context, id interface{}) error {
-	return r.DeleteByField(ctx, r.keyColumn, fmt.Sprintf("%v", id))
+func (repository *GenericRepository[T]) DeleteByID(ctx context.Context, identifier interface{}) error {
+	return repository.DeleteByField(ctx, repository.keyColumn, fmt.Sprintf("%v", identifier))
+}
+
+func (repository *GenericRepository[T]) isValidColumn(columnName string) bool {
+	for _, column := range repository.columnList {
+		if column == columnName {
+			return true
+		}
+	}
+	return false
 }
