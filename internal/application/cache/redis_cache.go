@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/unkabogaton/github-users/internal/models"
+	"github.com/unkabogaton/github-users/internal/domain/entities"
+	"github.com/unkabogaton/github-users/internal/domain/interfaces"
 )
 
 type RedisCache struct {
@@ -14,7 +15,7 @@ type RedisCache struct {
 	ttl         time.Duration
 }
 
-func NewRedisCache(address, password string, ttlSeconds int) *RedisCache {
+func NewRedisCache(address, password string, ttlSeconds int) interfaces.Cache {
 	client := redis.NewClient(&redis.Options{
 		Addr:     address,
 		Password: password,
@@ -28,7 +29,7 @@ func NewRedisCache(address, password string, ttlSeconds int) *RedisCache {
 func (cache *RedisCache) GetUser(
 	ctx context.Context,
 	login string,
-) (*models.GitHubUser, bool, error) {
+) (*entities.User, bool, error) {
 
 	key := "user:" + login
 	value, err := cache.redisClient.Get(ctx, key).Result()
@@ -39,14 +40,14 @@ func (cache *RedisCache) GetUser(
 		return nil, false, err
 	}
 
-	var user models.GitHubUser
+	var user entities.User
 	if err := json.Unmarshal([]byte(value), &user); err != nil {
 		return nil, false, err
 	}
 	return &user, true, nil
 }
 
-func (cache *RedisCache) SetUser(ctx context.Context, user *models.GitHubUser) error {
+func (cache *RedisCache) SetUser(ctx context.Context, user *entities.User) error {
 	key := "user:" + user.Login
 	bytes, err := json.Marshal(user)
 	if err != nil {
