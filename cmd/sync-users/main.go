@@ -37,7 +37,7 @@ func main() {
 
 	userRepository := repositories.NewUserRepository(database)
 
-	redisAddress := os.Getenv("REDIS_ADDR")
+	redisAddress := os.Getenv("REDIS_ADDRESS")
 	redisPassword := os.Getenv("REDIS_PASSWORD")
 	redisTTLString := os.Getenv("REDIS_TTL_SEC")
 	if redisTTLString == "" {

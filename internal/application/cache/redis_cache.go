@@ -26,13 +26,13 @@ func NewRedisCache(address, password string, ttlSeconds int) interfaces.Cache {
 	}
 }
 
-func (c *RedisCache) GetUser(
+func (cache *RedisCache) GetUser(
 	ctx context.Context,
 	login string,
 ) (*entities.User, bool, error) {
 
 	key := "user:" + login
-	value, err := c.redisClient.Get(ctx, key).Result()
+	value, err := cache.redisClient.Get(ctx, key).Result()
 	if err == redis.Nil {
 		return nil, false, nil
 	}
@@ -47,16 +47,16 @@ func (c *RedisCache) GetUser(
 	return &user, true, nil
 }
 
-func (c *RedisCache) SetUser(ctx context.Context, user *entities.User) error {
+func (cache *RedisCache) SetUser(ctx context.Context, user *entities.User) error {
 	key := "user:" + user.Login
 	bytes, err := json.Marshal(user)
 	if err != nil {
 		return err
 	}
-	return c.redisClient.Set(ctx, key, bytes, c.ttl).Err()
+	return cache.redisClient.Set(ctx, key, bytes, cache.ttl).Err()
 }
 
-func (c *RedisCache) DeleteUser(ctx context.Context, login string) error {
+func (cache *RedisCache) DeleteUser(ctx context.Context, login string) error {
 	key := "user:" + login
-	return c.redisClient.Del(ctx, key).Err()
+	return cache.redisClient.Del(ctx, key).Err()
 }
