@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package githubusers.v1;
+
+option go_package = "github.com/unkabogaton/github-users/internal/infrastructure/grpc/gen;gen";
+
+message Empty {}
+
+message User {
+  int64 id = 1;
+  string login = 2;
+  string node_id = 3;
+  string avatar_url = 4;
+  string url = 5;
+  string html_url = 6;
+  string type = 7;
+  string user_view_type = 8;
+  bool site_admin = 9;
+}
+
+message UserList {
+  repeated User users = 1;
+}
+
+message GetUserRequest {
+  string username = 1;
+}
+
+message UpdateUserRequest {
+  string username = 1;
+  string login = 2;
+  string node_id = 3;
+  string avatar_url = 4;
+  string url = 5;
+  string html_url = 6;
+  string type = 7;
+  string user_view_type = 8;
+  bool site_admin = 9;
+}
+
+message DeleteUserRequest {
+  string username = 1;
+}
+
+message DeleteUserResponse {
+  string username = 1;
+}
+
+service UserService {
+  rpc ListUsers (Empty) returns (UserList);
+  rpc GetUser (GetUserRequest) returns (User);
+  rpc UpdateUser (UpdateUserRequest) returns (User);
+  rpc DeleteUser (DeleteUserRequest) returns (DeleteUserResponse);
+}
+
+

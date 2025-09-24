@@ -10,6 +10,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/joho/godotenv"
 
 	"github.com/unkabogaton/github-users/internal/application/cache"
 	"github.com/unkabogaton/github-users/internal/domain/entities"
@@ -18,6 +19,8 @@ import (
 )
 
 func main() {
+	_ = godotenv.Load()
+	
 	applicationContext := context.Background()
 
 	const (
