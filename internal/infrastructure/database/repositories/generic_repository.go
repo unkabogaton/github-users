@@ -42,27 +42,49 @@ func extractColumnNames[T any](zeroValue T) []string {
 }
 
 func (repository *GenericRepository[T]) Upsert(ctx context.Context, entity T) error {
-	columns := strings.Join(repository.columnList, ", ")
-	placeholders := make([]string, len(repository.columnList))
-	for index, column := range repository.columnList {
-		placeholders[index] = ":" + column
-	}
-	values := strings.Join(placeholders, ", ")
+	columns := []string{}
+	placeholders := []string{}
+	updateAssignments := []string{}
 
-	updateAssignments := make([]string, 0, len(repository.columnList))
-	for _, column := range repository.columnList {
-		if column == repository.keyColumn || column == "updated_at" {
+	entityValue := reflect.ValueOf(entity)
+	entityType := reflect.TypeOf(entity)
+
+	for i := 0; i < entityType.NumField(); i++ {
+		field := entityType.Field(i)
+		dbTag := field.Tag.Get("db")
+		if dbTag == "" || dbTag == "-" {
 			continue
 		}
-		updateAssignments = append(updateAssignments,
-			fmt.Sprintf("%s = EXCLUDED.%s", column, column))
+
+		valueField := entityValue.Field(i)
+		if (dbTag == "created_at" || dbTag == "updated_at") && valueField.IsZero() {
+			continue
+		}
+
+		columns = append(columns, dbTag)
+		placeholders = append(placeholders, ":"+dbTag)
+
+		if dbTag != repository.keyColumn && dbTag != "updated_at" {
+			updateAssignments = append(updateAssignments, fmt.Sprintf("%s = VALUES(%s)", dbTag, dbTag))
+		}
 	}
-	updateClause := strings.Join(updateAssignments, ", ")
+
+	columnsStr := strings.Join(columns, ", ")
+	valuesStr := strings.Join(placeholders, ", ")
+
+	var updateClause string
+	if len(updateAssignments) > 0 {
+		updateClause = strings.Join(updateAssignments, ", ") + ", updated_at = CURRENT_TIMESTAMP"
+	} else {
+		updateClause = "updated_at = CURRENT_TIMESTAMP"
+	}
 
 	query := fmt.Sprintf(`
 		INSERT INTO %s (%s) VALUES (%s)
-		ON CONFLICT (%s) DO UPDATE SET %s, updated_at = NOW()`,
-		repository.tableName, columns, values, repository.keyColumn, updateClause)
+		ON DUPLICATE KEY UPDATE %s`,
+		repository.tableName, columnsStr, valuesStr, updateClause)
+
+	fmt.Printf("[DEBUG] Entity Values: %+v\n", entity)
 
 	_, err := repository.database.NamedExecContext(ctx, query, entity)
 	return err
@@ -71,7 +93,7 @@ func (repository *GenericRepository[T]) Upsert(ctx context.Context, entity T) er
 func (repository *GenericRepository[T]) GetByField(ctx context.Context, fieldName, fieldValue string) (*T, error) {
 	var entity T
 	query := fmt.Sprintf(
-		"SELECT %s FROM %s WHERE %s = $1 LIMIT 1",
+		"SELECT %s FROM %s WHERE %s = ? LIMIT 1",
 		strings.Join(repository.columnList, ", "),
 		repository.tableName,
 		fieldName,
@@ -111,7 +133,7 @@ func (repository *GenericRepository[T]) List(
 	offset := (page - 1) * limit
 
 	query := fmt.Sprintf(
-		"SELECT %s FROM %s ORDER BY %s %s LIMIT $1 OFFSET $2",
+		"SELECT %s FROM %s ORDER BY %s %s LIMIT ? OFFSET ?",
 		strings.Join(repository.columnList, ", "),
 		repository.tableName,
 		sortColumn,
@@ -125,7 +147,7 @@ func (repository *GenericRepository[T]) List(
 }
 
 func (repository *GenericRepository[T]) DeleteByField(ctx context.Context, fieldName, fieldValue string) error {
-	query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", repository.tableName, fieldName)
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s = ?", repository.tableName, fieldName)
 	_, err := repository.database.ExecContext(ctx, query, fieldValue)
 	return err
 }

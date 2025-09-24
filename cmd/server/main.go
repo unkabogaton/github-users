@@ -7,30 +7,36 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
-    "github.com/joho/godotenv"
+	"github.com/joho/godotenv"
 
 	"github.com/unkabogaton/github-users/internal/application/cache"
 	"github.com/unkabogaton/github-users/internal/application/services"
 	"github.com/unkabogaton/github-users/internal/infrastructure/database/repositories"
 	"github.com/unkabogaton/github-users/internal/infrastructure/http"
 	"github.com/unkabogaton/github-users/internal/infrastructure/http/controllers"
-    "github.com/unkabogaton/github-users/internal/infrastructure/http/middleware"
+	"github.com/unkabogaton/github-users/internal/infrastructure/http/middleware"
 )
 
 func main() {
-    _ = godotenv.Load()
+	_ = godotenv.Load()
 	restServerAddress := os.Getenv("REST_ADDRESS")
 	if restServerAddress == "" {
 		restServerAddress = ":8080"
 	}
 
-	postgresDSN := os.Getenv("POSTGRES_DSN")
-	if postgresDSN == "" {
-		log.Fatal("POSTGRES_DSN environment variable is required")
-	}
-	database, databaseErr := sqlx.Open("postgres", postgresDSN)
+	dbUser := os.Getenv("DB_USER")
+	dbPassword := os.Getenv("DB_PASSWORD")
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := os.Getenv("DB_PORT")
+	dbName := os.Getenv("DB_NAME")
+
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&multiStatements=true",
+		dbUser, dbPassword, dbHost, dbPort, dbName)
+
+	database, databaseErr := sqlx.Open("mysql", dsn)
+
 	if databaseErr != nil {
 		panic(fmt.Errorf("failed to open database: %w", databaseErr))
 	}
@@ -50,8 +56,8 @@ func main() {
 	gitHubClient := http.NewGitHubClient(gitHubToken)
 	userService := services.NewUserService(userRepository, redisCache, gitHubClient)
 
-    router := gin.Default()
-    router.Use(middleware.ErrorHandlingMiddleware())
+	router := gin.Default()
+	router.Use(middleware.ErrorHandlingMiddleware())
 	userController := controllers.NewUserController(userService)
 
 	router.GET("/users", userController.ListUsers)
