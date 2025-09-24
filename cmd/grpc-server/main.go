@@ -1,13 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strconv"
 
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
 
 	"github.com/unkabogaton/github-users/internal/application/cache"
 	"github.com/unkabogaton/github-users/internal/application/services"
@@ -24,11 +25,16 @@ func main() {
 		grpcAddress = ":9090"
 	}
 
-	postgresDSN := os.Getenv("POSTGRES_DSN")
-	if postgresDSN == "" {
-		log.Fatal("POSTGRES_DSN environment variable is required")
-	}
-	database, databaseErr := sqlx.Open("postgres", postgresDSN)
+	dbUser := os.Getenv("DB_USER")
+	dbPassword := os.Getenv("DB_PASSWORD")
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := os.Getenv("DB_PORT")
+	dbName := os.Getenv("DB_NAME")
+
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&multiStatements=true",
+		dbUser, dbPassword, dbHost, dbPort, dbName)
+
+	database, databaseErr := sqlx.Open("mysql", dsn)
 	if databaseErr != nil {
 		log.Fatalf("failed to open database: %v", databaseErr)
 	}
