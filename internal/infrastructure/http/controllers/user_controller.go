@@ -17,17 +17,42 @@ func NewUserController(userService interfaces.UserService) *UserController {
 	return &UserController{userService: userService}
 }
 
-func (c *UserController) ListUsers(ctx *gin.Context) {
-	requestContext := ctx.Request.Context()
+func (controller *UserController) ListUsers(ginContext *gin.Context) {
+    httpRequestContext := ginContext.Request.Context()
 
-	users, listErr := c.userService.List(requestContext)
-	if listErr != nil {
-        _ = ctx.Error(listErr)
-		return
-	}
+    defaultLimit := 10
+    defaultPage := 1
+    sortColumn := ginContext.DefaultQuery("orderby", "id")
+    sortDirection := ginContext.DefaultQuery("order", "asc")
 
-	ctx.JSON(http.StatusOK, users)
+    if limitQueryValue := ginContext.DefaultQuery("limit", ""); limitQueryValue != "" {
+        if parsedLimit, parseError := strconv.Atoi(limitQueryValue); parseError == nil {
+            defaultLimit = parsedLimit
+        }
+    }
+
+    if pageQueryValue := ginContext.DefaultQuery("page", ""); pageQueryValue != "" {
+        if parsedPage, parseError := strconv.Atoi(pageQueryValue); parseError == nil {
+            defaultPage = parsedPage
+        }
+    }
+
+    listOptions := interfaces.ListOptions{
+        Limit:          defaultLimit,
+        Page:           defaultPage,
+        OrderBy:        sortColumn,
+        OrderDirection: sortDirection,
+    }
+
+    users, userListError := controller.userService.List(httpRequestContext, listOptions)
+    if userListError != nil {
+        _ = ginContext.Error(userListError)
+        return
+    }
+
+    ginContext.JSON(http.StatusOK, users)
 }
+
 
 func (c *UserController) GetUser(ctx *gin.Context) {
 	requestContext := ctx.Request.Context()

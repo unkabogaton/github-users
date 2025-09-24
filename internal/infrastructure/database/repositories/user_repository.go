@@ -25,8 +25,8 @@ func (r *UserRepository) GetByLogin(ctx context.Context, login string) (*entitie
 	return r.GetByField(ctx, "login", login)
 }
 
-func (r *UserRepository) List(ctx context.Context) ([]entities.User, error) {
-	return r.GenericRepository.List(ctx)
+func (r *UserRepository) List(ctx context.Context, options interfaces.ListOptions) ([]entities.User, error) {
+    return r.GenericRepository.List(ctx, options.Limit, options.Page, options.OrderBy, options.OrderDirection)
 }
 
 func (r *UserRepository) DeleteByLogin(ctx context.Context, login string) error {

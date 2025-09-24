@@ -1,15 +1,14 @@
 package repositories
 
 import (
-	"context"
-	"fmt"
-	"reflect"
-	"strings"
+    "context"
+    "fmt"
+    "reflect"
+    "strings"
 
-	"github.com/jmoiron/sqlx"
+    "github.com/jmoiron/sqlx"
 )
 
-// GenericRepository provides generic CRUD operations for any table/struct
 type GenericRepository[T any] struct {
 	db        *sqlx.DB
 	tableName string
@@ -17,9 +16,7 @@ type GenericRepository[T any] struct {
 	keyColumn string
 }
 
-// NewGenericRepository creates a new generic repository
 func NewGenericRepository[T any](db *sqlx.DB, tableName, keyColumn string) *GenericRepository[T] {
-	// Extract column names from struct tags
 	var zero T
 	columns := extractColumns(zero)
 
@@ -31,7 +28,6 @@ func NewGenericRepository[T any](db *sqlx.DB, tableName, keyColumn string) *Gene
 	}
 }
 
-// extractColumns extracts column names from struct db tags
 func extractColumns[T any](zero T) []string {
 	t := reflect.TypeOf(zero)
 	var columns []string
@@ -45,7 +41,6 @@ func extractColumns[T any](zero T) []string {
 	return columns
 }
 
-// Upsert performs INSERT ... ON CONFLICT DO UPDATE
 func (r *GenericRepository[T]) Upsert(ctx context.Context, entity T) error {
 	columnsStr := strings.Join(r.columns, ", ")
 	placeholders := make([]string, len(r.columns))
@@ -54,7 +49,6 @@ func (r *GenericRepository[T]) Upsert(ctx context.Context, entity T) error {
 	}
 	valuesStr := strings.Join(placeholders, ", ")
 
-	// Build SET clause for ON CONFLICT
 	setClause := make([]string, 0, len(r.columns))
 	for _, col := range r.columns {
 		if col != r.keyColumn {
@@ -72,7 +66,6 @@ func (r *GenericRepository[T]) Upsert(ctx context.Context, entity T) error {
 	return err
 }
 
-// GetByField retrieves a single record by a specific field
 func (r *GenericRepository[T]) GetByField(ctx context.Context, field, value string) (*T, error) {
 	var entity T
 	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1 LIMIT 1",
@@ -84,30 +77,60 @@ func (r *GenericRepository[T]) GetByField(ctx context.Context, field, value stri
 	return &entity, nil
 }
 
-// List retrieves all records
-func (r *GenericRepository[T]) List(ctx context.Context) ([]T, error) {
-	var entities []T
-	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(r.columns, ", "), r.tableName)
+func (r *GenericRepository[T]) List(ctx context.Context, limit, page int, orderBy, orderDirection string) ([]T, error) {
+    var results []T
 
-	if err := r.db.SelectContext(ctx, &entities, query); err != nil {
-		return nil, err
-	}
-	return entities, nil
+    resolvedOrderBy := orderBy
+    if resolvedOrderBy == "" || !r.isValidColumn(orderBy) {
+        resolvedOrderBy = r.keyColumn
+    }
+
+    resolvedDirection := strings.ToUpper(orderDirection)
+    if resolvedDirection != "DESC" {
+        resolvedDirection = "ASC"
+    }
+
+    if limit <= 0 {
+        limit = 10
+    }
+    if page <= 0 {
+        page = 1
+    }
+    offset := (page - 1) * limit
+
+    query := fmt.Sprintf(
+        "SELECT %s FROM %s ORDER BY %s %s LIMIT $1 OFFSET $2",
+        strings.Join(r.columns, ", "),
+        r.tableName,
+        resolvedOrderBy,
+        resolvedDirection,
+    )
+
+    if err := r.db.SelectContext(ctx, &results, query, limit, offset); err != nil {
+        return nil, err
+    }
+    return results, nil
 }
 
-// DeleteByField deletes records by a specific field
 func (r *GenericRepository[T]) DeleteByField(ctx context.Context, field, value string) error {
 	query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", r.tableName, field)
 	_, err := r.db.ExecContext(ctx, query, value)
 	return err
 }
 
-// GetByID retrieves a record by its primary key
 func (r *GenericRepository[T]) GetByID(ctx context.Context, id interface{}) (*T, error) {
 	return r.GetByField(ctx, r.keyColumn, fmt.Sprintf("%v", id))
 }
 
-// DeleteByID deletes a record by its primary key
 func (r *GenericRepository[T]) DeleteByID(ctx context.Context, id interface{}) error {
 	return r.DeleteByField(ctx, r.keyColumn, fmt.Sprintf("%v", id))
+}
+
+func (r *GenericRepository[T]) isValidColumn(column string) bool {
+    for _, c := range r.columns {
+        if c == column {
+            return true
+        }
+    }
+    return false
 }
