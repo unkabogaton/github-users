@@ -47,18 +47,46 @@ func mapUserEntityToProto(userEntity *entities.User) *gen.User {
 	}
 }
 
-func (server *Server) ListUsers(ctx context.Context, _ *gen.Empty) (*gen.UserList, error) {
-	userEntities, err := server.userService.List(ctx)
+func (server *Server) ListUsers(
+	ctx context.Context,
+	req *gen.ListUsersRequest,
+) (*gen.UserList, error) {
+
+	limit := int(req.GetLimit())
+	if limit == 0 {
+		limit = 10
+	}
+	page := int(req.GetPage())
+	if page == 0 {
+		page = 1
+	}
+	orderBy := req.GetOrderBy()
+	if orderBy == "" {
+		orderBy = "id"
+	}
+	orderDirection := req.GetOrderDirection()
+	if orderDirection == "" {
+		orderDirection = "asc"
+	}
+
+	listOptions := interfaces.ListOptions{
+		Limit:          limit,
+		Page:           page,
+		OrderBy:        orderBy,
+		OrderDirection: orderDirection,
+	}
+
+	userEntities, err := server.userService.List(ctx, listOptions)
 	if err != nil {
 		return nil, err
 	}
 
-	userListResponse := &gen.UserList{}
+	protoUsers := make([]*gen.User, 0, len(userEntities))
 	for i := range userEntities {
-		userListResponse.Users = append(userListResponse.Users, mapUserEntityToProto(&userEntities[i]))
+		protoUsers = append(protoUsers, mapUserEntityToProto(&userEntities[i]))
 	}
 
-	return userListResponse, nil
+	return &gen.UserList{Users: protoUsers}, nil
 }
 
 func (server *Server) GetUser(ctx context.Context, request *gen.GetUserRequest) (*gen.User, error) {

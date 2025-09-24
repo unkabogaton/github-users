@@ -51,9 +51,11 @@ func (repository *GenericRepository[T]) Upsert(ctx context.Context, entity T) er
 
 	updateAssignments := make([]string, 0, len(repository.columnList))
 	for _, column := range repository.columnList {
-		if column != repository.keyColumn {
-			updateAssignments = append(updateAssignments, fmt.Sprintf("%s = EXCLUDED.%s", column, column))
+		if column == repository.keyColumn || column == "updated_at" {
+			continue
 		}
+		updateAssignments = append(updateAssignments,
+			fmt.Sprintf("%s = EXCLUDED.%s", column, column))
 	}
 	updateClause := strings.Join(updateAssignments, ", ")
 

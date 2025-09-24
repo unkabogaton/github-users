@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
 	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 
 	"github.com/unkabogaton/github-users/internal/application/cache"
 	"github.com/unkabogaton/github-users/internal/domain/entities"
@@ -18,17 +18,26 @@ import (
 	"github.com/unkabogaton/github-users/internal/infrastructure/http"
 )
 
+func convertEnvConfigToInt(key string, defaultValue int) int {
+	if valueStr := os.Getenv(key); valueStr != "" {
+		if value, err := strconv.Atoi(valueStr); err == nil {
+			return value
+		}
+	}
+	return defaultValue
+}
+
 func main() {
 	_ = godotenv.Load()
-	
+
 	applicationContext := context.Background()
 
-	const (
-		usersPerPage            = 30
-		workerPoolSize          = 5
-		maximumFetchRetries     = 3
-		delayBetweenUpsertsMS   = 200
-		maximumConsecutiveEmpty = 1
+	var (
+		usersPerPage            = convertEnvConfigToInt("USERS_PER_PAGE", 30)
+		workerPoolSize          = convertEnvConfigToInt("WORKER_POOL_SIZE", 5)
+		maximumFetchRetries     = convertEnvConfigToInt("MAXIMUM_FETCH_RETRIES", 3)
+		delayBetweenUpsertsMS   = convertEnvConfigToInt("DELAY_BETWEEN_UPSERTS_MS", 200)
+		maximumConsecutiveEmpty = convertEnvConfigToInt("MAXIMUM_CONSECUTIVE_EMPTY", 1)
 	)
 
 	postgresDSN := os.Getenv("POSTGRES_DSN")
@@ -129,6 +138,7 @@ func main() {
 				userChannel <- entities.User{
 					ID:           fetchedUser.ID,
 					Login:        fetchedUser.Login,
+					NodeID:       fetchedUser.NodeID,
 					AvatarURL:    fetchedUser.AvatarURL,
 					HTMLURL:      fetchedUser.HTMLURL,
 					URL:          fetchedUser.URL,
