@@ -8,7 +8,7 @@ import (
 
 type UserService interface {
 	Get(ctx context.Context, username string) (*entities.User, error)
-	List(ctx context.Context) ([]entities.User, error)
+    List(ctx context.Context, options ListOptions) ([]entities.User, error)
 	Update(ctx context.Context, username string, update UpdateUserRequest) (*entities.User, error)
 	Delete(ctx context.Context, username string) error
 }
