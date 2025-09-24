@@ -4,6 +4,7 @@ import (
     "net/http"
 
     "github.com/gin-gonic/gin"
+
     derr "github.com/unkabogaton/github-users/internal/domain/errors"
     "github.com/unkabogaton/github-users/internal/domain/interfaces"
 )
@@ -77,5 +78,5 @@ func (c *UserController) DeleteUser(ctx *gin.Context) {
 		return
 	}
 
-	ctx.Status(http.StatusNoContent)
+    ctx.JSON(http.StatusOK, gin.H{"username": username})
 }
