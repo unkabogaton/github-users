@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,8 +16,6 @@ import (
 
 type fakeUserService struct{}
 
-type errUserService struct{ fakeUserService }
-
 func (f *fakeUserService) Get(ctx context.Context, username string) (*entities.User, error) {
 	return &entities.User{ID: 1, Login: username}, nil
 }
@@ -29,10 +26,6 @@ func (f *fakeUserService) List(ctx context.Context, _ interfaces.ListOptions) ([
 
 func (f *fakeUserService) Update(ctx context.Context, username string, update interfaces.UpdateUserRequest) (*entities.User, error) {
 	return &entities.User{ID: 1, Login: update.Login}, nil
-}
-
-func (e *errUserService) Update(ctx context.Context, u string, r interfaces.UpdateUserRequest) (*entities.User, error) {
-	return nil, errors.New("forced error")
 }
 
 func (f *fakeUserService) Delete(ctx context.Context, username string) error { return nil }
@@ -122,19 +115,3 @@ func TestDeleteUser_OK(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 }
-
-// func TestUpdateUser_ServiceError(t *testing.T) {
-// 	t.Parallel()
-// 	gin.SetMode(gin.TestMode)
-// 	r := gin.New()
-// 	c := NewUserController(&errUserService{})
-// 	r.PUT("/users/:username", c.UpdateUser)
-
-// 	body := `{"Login":"sample_username"}`
-// 	req := httptest.NewRequest(http.MethodPut, "/users/sample_username", strings.NewReader(body))
-// 	req.Header.Set("Content-Type", "application/json")
-// 	w := httptest.NewRecorder()
-// 	r.ServeHTTP(w, req)
-
-// 	require.Equal(t, http.StatusInternalServerError, w.Code)
-// }
