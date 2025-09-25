@@ -24,6 +24,13 @@ func (userRepository *UserRepository) Upsert(
 	return userRepository.GenericRepository.Upsert(ctx, *userEntity)
 }
 
+func (userRepository *UserRepository) BatchUpsert(
+	ctx context.Context,
+	userEntities *[]entities.User,
+) error {
+	return userRepository.GenericRepository.BatchUpsert(ctx, *userEntities)
+}
+
 func (userRepository *UserRepository) GetByLogin(
 	ctx context.Context,
 	login string,

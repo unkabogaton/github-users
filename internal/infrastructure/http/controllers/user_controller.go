@@ -1,8 +1,11 @@
 package controllers
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -87,7 +90,13 @@ func (controller *UserController) UpdateUser(ginContext *gin.Context) {
 		usernameParameter,
 		updateUserRequest,
 	)
+
 	if updateError != nil {
+		if strings.Contains(updateError.Error(), "no row") || errors.Is(updateError, sql.ErrNoRows) {
+			ginContext.Error(domainErrors.Wrap(domainErrors.ErrorCodeNotFound, "User not found", updateError))
+			return
+		}
+
 		_ = ginContext.Error(domainErrors.Wrap(domainErrors.ErrorCodeInternal, "failed to update user", updateError))
 		return
 	}
