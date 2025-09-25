@@ -15,10 +15,18 @@ type fakeRepository struct {
 	stored map[string]*entities.User
 }
 
-func (f *fakeRepository) Upsert(ctx context.Context, u *entities.User) error {
-	f.stored[u.Login] = u
+func (f *fakeRepository) Upsert(ctx context.Context, user *entities.User) error {
+	f.stored[user.Login] = user
 	return nil
 }
+
+func (f *fakeRepository) BatchUpsert(ctx context.Context, users *[]entities.User) error {
+	for _, user := range *users {
+		f.stored[user.Login] = &user
+	}
+	return nil
+}
+
 func (f *fakeRepository) GetByLogin(ctx context.Context, login string) (*entities.User, error) {
 	if u, ok := f.stored[login]; ok {
 		return u, nil

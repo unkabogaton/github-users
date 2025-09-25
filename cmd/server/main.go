@@ -57,6 +57,7 @@ func main() {
 	userService := services.NewUserService(userRepository, redisCache, gitHubClient)
 
 	router := gin.Default()
+	router.SetTrustedProxies(nil)
 	router.Use(middleware.ErrorHandlingMiddleware())
 	userController := controllers.NewUserController(userService)
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/unkabogaton/github-users/internal/application/cache"
 	"github.com/unkabogaton/github-users/internal/domain/entities"
+	"github.com/unkabogaton/github-users/internal/domain/interfaces"
 	"github.com/unkabogaton/github-users/internal/infrastructure/database/repositories"
 	"github.com/unkabogaton/github-users/internal/infrastructure/http"
 )
@@ -42,7 +43,7 @@ func main() {
 
 	dbUser := os.Getenv("DB_USER")
 	dbPassword := os.Getenv("DB_PASSWORD")
-	dbHost := os.Getenv("DB_HOST")
+	dbHost := os.Getenv("DB_LOCAL_HOST")
 	dbPort := os.Getenv("DB_PORT")
 	dbName := os.Getenv("DB_NAME")
 
@@ -96,6 +97,24 @@ func main() {
 		defer close(userChannel)
 
 		lastFetchedID := 0
+
+		lastFetchOption := interfaces.ListOptions{
+			Limit:          1,
+			OrderBy:        "created_at",
+			OrderDirection: "DESC",
+		}
+
+		lastUsersFetched, err := userRepository.List(applicationContext, lastFetchOption)
+		if err != nil {
+			fmt.Printf("failed to get last fetched user: %v\n", err)
+			lastFetchedID = 0
+		} else if len(lastUsersFetched) == 0 {
+			lastFetchedID = 0
+		} else {
+			lastFetchedID = lastUsersFetched[0].ID
+			fmt.Printf("last fetched id: %v\n", lastFetchedID)
+		}
+
 		consecutiveEmptyBatches := 0
 
 		for {
